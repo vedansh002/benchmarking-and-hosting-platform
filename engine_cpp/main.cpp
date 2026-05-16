@@ -10,6 +10,7 @@
 #include <netinet/in.h>
 #include <fcntl.h>
 #include <cstring>
+#include <sstream>
 #include "ThreadPool.hpp"
 
 int create_and_bind_socket(int port){
@@ -84,20 +85,41 @@ public:
                 else{
                     epoll_ctl(epoll_fd,EPOLL_CTL_DEL,active_fd,nullptr);
 
-                    pool.submit([active_fd]() {
-                        char buffer[1024] = {0};
-                        
+                    pool.submit([active_fd](){
+                        char buffer[2048]={0};
                         //read what is typed
-                        int bytes_read = read(active_fd, buffer, sizeof(buffer));
-                        
+                        int bytes_read=read(active_fd,buffer,sizeof(buffer));
                         if (bytes_read > 0) {
-                            // Print it to the server console
-                            std::cout << "Customer said: " << buffer;
+                            //convert raw bytes into string and slice first line
+                            std::string request(buffer);
+                            std::istringstream iss(request);
+                            std::string method, path, version;
                             
-                            std::string response = "Engine Echo: " + std::string(buffer);
-                            write(active_fd, response.c_str(), response.length());
+                            // This automatically grabs the first 3 words separated by spaces
+                            iss>>method>>path>>version; 
+                            
+                            std::cout<<"[Router] Customer requested: "<<method<<" "<<path<<std::endl;
+
+                            std::string response;
+
+                            //router
+                            if (method == "GET" && path == "/"){
+                                std::string body = "<h1>[200 OK] Engine Home</h1><p>Welcome to the root.</p>";
+                                response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: " + std::to_string(body.length()) + "\r\nConnection: close\r\n\r\n" + body;
+                            } 
+                            else if(method=="GET" && path=="/status"){
+                                //return JSON
+                                std::string body = "{\"status\": \"online\", \"workers\": 4, \"version\": \"1.0.0\"}";
+                                response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + std::to_string(body.length()) + "\r\nConnection: close\r\n\r\n" + body;
+                            }
+                            else{
+                                //404
+                                std::string body="<h1>[404 NOT FOUND]</h1><p>This route does not exist.</p>";
+                                response="HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\nContent-Length: "+std::to_string(body.length())+"\r\nConnection: close\r\n\r\n"+body;
+                            }
+                            //response back to the browser
+                            write(active_fd,response.c_str(),response.length());
                         }
-                        
                         //close connection
                         close(active_fd);
                     });
