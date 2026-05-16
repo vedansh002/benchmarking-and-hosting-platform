@@ -1,0 +1,8 @@
+**/build/
+**/.cmake/
+**/CMakeFiles/
+**/Makefile
+**/*.cmake
+**/*.o
+**/*.a
+**/*.so
